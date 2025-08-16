@@ -1,0 +1,14 @@
+{
+  "topLeft": {
+    "command": "Set-Location ~; Clear-Host"
+  },
+  "topRight": {
+    "command": "Set-Location ~/Downloads; ls"
+  },
+  "bottomLeft": {
+    "command": "Set-Location C:/projects/my-project; Clear-Host; git status"
+  },
+  "bottomRight": {
+    "command": "Set-Location C:/work; Clear-Host; Get-Date"
+  }
+}
