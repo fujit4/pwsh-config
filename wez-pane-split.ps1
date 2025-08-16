@@ -3,11 +3,11 @@
 
 <#
 .SYNOPSIS
-    Splits the current wezterm pane into four, based on a JSON configuration.
+    Splits the current wezterm pane into a 2x2 grid, based on a JSON configuration.
 .DESCRIPTION
     This script defines the Invoke-WezPaneSplit function that splits the current 
-    wezterm pane into a 2x2 grid. It looks for a 'wez-pane-split.json' file to 
-    configure the startup command for each pane.
+    wezterm pane into a 2x2 grid. It uses pane IDs for robust splitting.
+    It looks for a 'wez-pane-split.json' file to configure the startup command for each pane.
 .EXAMPLE
     Invoke-WezPaneSplit
     Splits the panes according to the configuration file.
@@ -45,27 +45,7 @@ function Get-PaneExecutionCommand {
     }
     
     # Directly return the command string from the config.
-    # The JSON is now expected to contain the full command, e.g., "Set-Location ~; ls"
     return $paneConfig.command
-}
-
-function New-WeztermPane {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Direction,
-        [psobject]$PaneConfig
-    )
-    
-    $commandToRun = Get-PaneExecutionCommand -paneConfig $PaneConfig
-    
-    $splitArgs = @($Direction)
-    if (-not [string]::IsNullOrEmpty($commandToRun)) {
-        # Use -NoExit to keep the pane open after the initial command runs.
-        # The command string is passed as a single argument.
-        $splitArgs += "--", "pwsh", "-NoExit", "-Command", $commandToRun
-    }
-    
-    wezterm cli split-pane @splitArgs | Out-Null
 }
 
 #endregion
@@ -86,35 +66,59 @@ function Invoke-WezPaneSplit {
             Write-Host "Loaded configuration from: $configPath" -ForegroundColor Green
         } catch {
             Write-Error "Failed to parse config file '$configPath'. Error: $($_.Exception.Message)"
+            # Continue without config on parsing error
         }
     } else {
         Write-Host "Configuration file not found. Splitting panes without custom commands."
     }
 
-    # 2. Create Panes in a specific order for a 2x2 grid
-    # Create Top-Right pane
-    New-WeztermPane -Direction "--right" -PaneConfig $config.topRight
-    Start-Sleep -Milliseconds 100 # A brief pause for wezterm to process the split
-    wezterm cli activate-pane-direction Left | Out-Null
+    # 2. Get the ID of the current pane (this will be our Top-Left pane)
+    $topLeftPaneId = $env:WEZTERM_PANE
+    if (-not $topLeftPaneId) {
+        Write-Error "This script must be run from within a wezterm environment."
+        return
+    }
 
-    # Create Bottom-Left pane from the Top-Left
-    New-WeztermPane -Direction "--bottom" -PaneConfig $config.bottomLeft
-    wezterm cli activate-pane-direction Down | Out-Null
+    # 3. Define a helper function to split panes and return the new pane ID
+    function Split-Pane {
+        param(
+            [Parameter(Mandatory)]
+            [array]$SplitArgs
+        )
+        # 'wezterm cli split-pane' returns the new pane ID to stdout, which we capture.
+        return (wezterm cli split-pane @SplitArgs).Trim()
+    }
 
-    # Create Bottom-Right pane from the Bottom-Left
-    New-WeztermPane -Direction "--right" -PaneConfig $config.bottomRight
+    # 4. Create the grid using Pane IDs for precision
+    
+    # Create Top-Right pane by splitting Top-Left horizontally
+    $topRightCmd = Get-PaneExecutionCommand -paneConfig $config.topRight
+    $trSplitArgs = @("--pane-id", $topLeftPaneId, "--horizontal", "--percent", 50)
+    if ($topRightCmd) { $trSplitArgs += "--", "pwsh", "-NoExit", "-Command", $topRightCmd }
+    $topRightPaneId = Split-Pane -SplitArgs $trSplitArgs
 
-    # 3. Setup Top-Left Pane (the current pane where the script is running)
+    # Create Bottom-Left pane by splitting Top-Left vertically (default direction)
+    $bottomLeftCmd = Get-PaneExecutionCommand -paneConfig $config.bottomLeft
+    $blSplitArgs = @("--pane-id", $topLeftPaneId, "--percent", 50)
+    if ($bottomLeftCmd) { $blSplitArgs += "--", "pwsh", "-NoExit", "-Command", $bottomLeftCmd }
+    $bottomLeftPaneId = Split-Pane -SplitArgs $blSplitArgs
+
+    # Create Bottom-Right pane by splitting Top-Right vertically (default direction)
+    $bottomRightCmd = Get-PaneExecutionCommand -paneConfig $config.bottomRight
+    $brSplitArgs = @("--pane-id", $topRightPaneId, "--percent", 50)
+    if ($bottomRightCmd) { $brSplitArgs += "--", "pwsh", "-NoExit", "-Command", $bottomRightCmd }
+    $bottomRightPaneId = Split-Pane -SplitArgs $brSplitArgs
+
+    # 5. Setup the Top-Left pane itself (the pane where the script is running)
     $topLeftCommand = Get-PaneExecutionCommand -paneConfig $config.topLeft
     if (-not [string]::IsNullOrEmpty($topLeftCommand)) {
         Invoke-Expression $topLeftCommand
     }
 
-    # 4. Return focus to the Top-Left Pane
-    wezterm cli activate-pane-direction Up   | Out-Null
-    wezterm cli activate-pane-direction Left | Out-Null
+    # 6. Return focus to the Top-Left Pane for final user control
+    wezterm cli activate-pane --pane-id $topLeftPaneId | Out-Null
 
-    Write-Host "wezterm panes have been set up." -ForegroundColor Green
+    Write-Host "wezterm 2x2 grid created successfully." -ForegroundColor Green
 
     #endregion
 }

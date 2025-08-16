@@ -3,7 +3,7 @@
     "command": "Set-Location ~;"
   },
   "topRight": {
-    "command": "Set-Location ~/Downloads; ls"
+    "command": "Set-Location ~/Downloads;"
   },
   "bottomLeft": {
     "command": "Set-Location C:/work;"
