@@ -98,7 +98,8 @@ function Invoke-WezPaneSplit {
     wezterm cli activate-pane-direction Left | Out-Null
 
     # Create Bottom-Left pane from the Top-Left
-    New-WeztermPane -Direction "--down" -PaneConfig $config.bottomLeft
+    New-WeztermPane -Direction "--bottom" -PaneConfig $config.bottomLeft
+    wezterm cli activate-pane-direction Down | Out-Null
 
     # Create Bottom-Right pane from the Bottom-Left
     New-WeztermPane -Direction "--right" -PaneConfig $config.bottomRight
